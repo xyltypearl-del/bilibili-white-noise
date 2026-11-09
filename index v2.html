@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>白噪音 · iPod 播放器</title>
+<style>
+  *{box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent;}
+  ::selection{ background:transparent; }
+  ::-moz-selection{ background:transparent; }
+  html,body{margin:0;height:100%;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:transparent;
+    min-height:100%; display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+
+  /* ===== iPod 外壳 ===== */
+  .ipod{
+    width:340px; padding:22px 22px 26px; border-radius:26px;
+    background:linear-gradient(160deg,#fdfdfd,#cfd4da);
+    box-shadow:0 30px 70px rgba(0,0,0,.45), inset 0 1px 0 #fff, inset 0 -2px 6px rgba(0,0,0,.12);
+  }
+
+  /* ===== 屏幕 ===== */
+  .bezel{ background:#000; border-radius:12px; padding:10px; box-shadow:inset 0 0 0 2px #2a2a2a, inset 0 3px 10px rgba(0,0,0,.6); }
+  .screen{ position:relative; width:100%; aspect-ratio:4/3; background:#0b0e13; border-radius:5px; overflow:hidden; }
+
+  /* 菜单视图 */
+  .menu{ position:absolute; inset:0; background:linear-gradient(#eef3ff,#dbe6ff); color:#1b2a4a; display:flex; flex-direction:column; }
+  .menu .bar{ background:linear-gradient(#5b8cff,#3a6df0); color:#fff; font-size:13px; font-weight:700; padding:5px 10px; display:flex; justify-content:space-between; align-items:center; }
+  .menu .bar .cnt{ opacity:.85; font-weight:500; font-size:11px; }
+  .menu .bar .bar-l{ display:flex; align-items:center; gap:7px; min-width:0; }
+  .menu .bar .back{ display:none; font-size:18px; line-height:1; cursor:pointer; padding:0 3px; margin-left:-3px; }
+  .menu .bar .back.show{ display:inline; }
+  .viewport{ position:relative; flex:1; overflow:hidden; }
+  .list{ position:absolute; left:0; right:0; top:0; transition:transform .18s ease; }
+  .row{ height:34px; display:flex; align-items:center; padding:0 12px; font-size:14px; white-space:nowrap; overflow:hidden; border-bottom:1px solid rgba(0,0,0,.04); }
+  .row .ico{ flex:none; margin-right:10px; }
+  .row .ico-t{ width:22px; height:22px; border-radius:6px; background:rgba(58,109,240,.16); color:#2f5fd0;
+    font-size:12px; font-weight:800; display:inline-flex; align-items:center; justify-content:center; }
+  .row .ico-n{ width:20px; text-align:center; font-size:11px; opacity:.7; }
+  .row .txt{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+  .row .sub{ margin-left:8px; font-size:11px; opacity:.7; flex:none; }
+  .row.on{ background:linear-gradient(90deg,#3a6df0,#5b8cff); color:#fff; }
+  .row.on .ico-t{ background:rgba(255,255,255,.28); color:#fff; }
+  .row.on .ico-n{ opacity:1; }
+
+  /* 正在播放视图 */
+  .nowplaying{ position:absolute; inset:0; background:#000; display:none; overflow:hidden; }
+  .nowplaying.show{ display:block; }
+  #player{ position:absolute; inset:0; width:100%; height:100%; border:0; display:block; }
+  .np-bar{ position:absolute; top:0; left:0; right:0; z-index:5; padding:6px 9px 7px;
+    background:linear-gradient(rgba(0,0,0,.84),rgba(0,0,0,.42)); color:#fff; }
+  .np-line1,.np-line2{ display:flex; align-items:center; gap:8px; }
+  .np-line2{ margin-top:5px; }
+  .np-song{ flex:1; min-width:0; font-size:12px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .np-theme{ flex:1; min-width:0; font-size:10px; opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chip{ flex:none; font:inherit; font-size:10px; font-weight:700; color:#fff; cursor:pointer;
+    background:rgba(255,255,255,.2); border:1px solid rgba(255,255,255,.34); border-radius:12px; padding:2px 9px;
+    -webkit-appearance:none; appearance:none; }
+  .chip:active{ background:rgba(255,255,255,.35); }
+  .chip:disabled{ opacity:.4; cursor:default; }
+  /* 玻璃反光 */
+  .screen::after{ content:""; position:absolute; inset:0; pointer-events:none;
+    background:linear-gradient(135deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 40%); border-radius:5px; }
+
+  /* ===== 点击转盘 ===== */
+  .wheel{ position:relative; width:206px; height:206px; margin:24px auto 0; border-radius:50%;
+    background:radial-gradient(circle at 50% 38%, #f6f7f9, #c4c9cf);
+    border:2px solid #b4bac2;
+    box-shadow: inset 0 2px 6px rgba(255,255,255,.9), inset 0 -4px 10px rgba(0,0,0,.25), 0 4px 12px rgba(0,0,0,.22);
+    touch-action:none; user-select:none; }
+  .wheel .center{ position:absolute; inset:0; margin:auto; width:76px; height:76px; border-radius:50%;
+    background:radial-gradient(circle at 50% 38%, #fbfcfd, #d2d7dd);
+    border:1px solid #c2c8cf;
+    box-shadow: inset 0 1px 3px #fff, 0 2px 6px rgba(0,0,0,.28); display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .wheel .center span{ font-size:11px; color:#6b7280; font-weight:700; letter-spacing:1px; }
+  .lbl{ position:absolute; font-size:11px; color:#5b6270; font-weight:700; letter-spacing:.5px; cursor:pointer; background:transparent; }
+  /* 类名用 mnu 而非 menu：避免被 .menu 菜单样式命中（曾导致转盘上出现浅蓝矩形背景） */
+  .lbl.mnu{ top:10px; left:50%; transform:translateX(-50%); }
+  .lbl.prev{ left:14px; top:50%; transform:translateY(-50%); }
+  .lbl.next{ right:14px; top:50%; transform:translateY(-50%); }
+
+  .hint{ margin:16px auto 0; max-width:350px; font-size:11px; color:rgba(70,80,100,.78); line-height:1.7; text-align:center; }
+</style>
+</head>
+<body>
+
+  <div class="ipod">
+    <div class="bezel">
+      <div class="screen" id="screen">
+        <!-- 菜单（主题列表 / 曲目列表 共用） -->
+        <div class="menu" id="menu">
+          <div class="bar"><span class="bar-l"><span class="back" id="btnBack" title="返回主题列表">‹</span><span id="barLeft">白噪音 · 主题</span></span><span class="cnt" id="barRight"></span></div>
+          <div class="viewport"><div class="list" id="list"></div></div>
+        </div>
+        <!-- 正在播放 -->
+        <div class="nowplaying" id="np">
+          <div class="np-bar">
+            <div class="np-line1">
+              <button class="chip" id="btnBackNp" title="返回曲目列表">‹</button>
+              <span class="np-song" id="npSong">♪ —</span>
+              <button class="chip" id="btnMode" title="循环模式：主题轮播 / 单曲循环 / 手动">主题</button>
+            </div>
+            <div class="np-line2">
+              <span class="np-theme" id="npTheme">—</span>
+              <button class="chip" id="btnGap" title="自动切换间隔">每 45 分</button>
+            </div>
+          </div>
+          <iframe id="player" src="" scrolling="no" frameborder="no" allow="autoplay; encrypted-media; fullscreen"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <div class="wheel" id="wheel">
+      <div class="lbl mnu" id="btnMenu">MENU</div>
+      <div class="lbl prev" id="btnPrev">◀</div>
+      <div class="lbl next" id="btnNext">▶</div>
+      <div class="center" id="btnCenter"><span>SELECT</span></div>
+    </div>
+  </div>
+
+  <div class="hint">
+    选「主题」→ SELECT 进曲目 → 再 SELECT 播放。<b>退回上一步：点屏幕左上角 ‹，或按转盘 MENU（键盘 Esc）</b>；<br>
+    播放中按 MENU 回曲目列表，再按一次回主题列表。<br>
+    播放中：◀▶／转盘换曲（限本主题）；顶部「模式」切 主题轮播／单曲循环／手动，「每 N 分」设间隔。<br>
+    B站跨域读不到播放进度，轮播按设定时长到点切歌，建议间隔≈视频时长。分主题嵌入：地址后加 <b>?theme=zen</b>／game／study／life／rain。
+  </div>
+
+<script>
+/* ===================== 主题 + 歌单（在这里编辑）=====================
+   【加一首】在对应主题下加一行 { title:"名字", bvid:"BVxxx" }，末尾逗号别丢。
+   【加主题】在 THEMES 里加 { id:'英文名', ico:'单字', name:'中文名' }，再给曲目标 theme:'同英文名'。
+   【分P视频】加 page: 2 表示播第 2 P（对应链接里的 &p=2）。
+   排序：TRACKS 按主题顺序排列，列表即按此顺序显示。 */
+
+const THEMES = [
+  { id:'all',    ico:'全', name:'全部曲目' },
+  { id:'zen',    ico:'禅', name:'禅院钟声' },
+  { id:'rain',   ico:'雨', name:'自然雨声' },
+  { id:'game',   ico:'江', name:'江湖实景' },
+  { id:'study',  ico:'伴', name:'陪伴学习' },
+  { id:'life',   ico:'生', name:'生活氛围' },
+];
+
+const TRACKS = [
+  /* 禅院钟声 */
+  { title:"雨声·木鱼 又见净慈寺", bvid:"BV14y4y1h7FG", theme:'zen' },
+  { title:"南屏晚钟 · 钟声木鱼",   bvid:"BV16p4y187R1", theme:'zen' },
+  { title:"杭州下雪 · 南屏晚钟",   bvid:"BV1sP4y1A7NQ", theme:'zen' },
+  { title:"净慈寺的钟声 · 一小时", bvid:"BV1fX4y1G7B8", theme:'zen' },
+  { title:"寺庙音 · 雨声木鱼",     bvid:"BV1iuPyeJEWL", theme:'zen' },
+  { title:"杭州法镜寺 · 钟木雨声", bvid:"BV19T411C7Zr", theme:'zen' },
+  { title:"杭州净慈寺的雨天",      bvid:"BV1dt42177V8", theme:'zen' },
+  { title:"寺庙流水钟声 · 助眠",   bvid:"BV1Mg411M7Va", theme:'zen' },
+  /* 自然雨声 */
+  { title:"迷雾森林雨声 · 10小时", bvid:"BV1Vg4y157LF", theme:'rain' },
+  /* 江湖实景 */
+  { title:"燕云江南 · 游船 BGM",   bvid:"BV16hTv6WE6H", theme:'game' },
+  { title:"燕云西境 · 灵隐新寺",   bvid:"BV1Tx4Q6hEXb", theme:'game', page:2 },
+  { title:"燕云 · 陈宅静坐",       bvid:"BV1V8gR6qE7h", theme:'game', page:2 },
+  /* 陪伴学习 */
+  { title:"陆沉 · 豪华别墅自习室", bvid:"BV1PT4y1i7AL", theme:'study' },
+  { title:"陆沉 · 壁炉工作陪伴",   bvid:"BV14CYdzTE5m", theme:'study' },
+  { title:"陆沉 · 校园雨声自习",   bvid:"BV1YhbkzPE9Y", theme:'study' },
+  { title:"黎深 · 工作学习陪伴",   bvid:"BV19D421j7ss", theme:'study' },
+  /* 生活氛围 */
+  { title:"中药堂 · 煎药翻书 3h",  bvid:"BV1PB4y1y7eL", theme:'life' },
+  { title:"罗小黑 · 纸箱避雨",     bvid:"BV1Gt4y1P7fD", theme:'life' },
+  { title:"罗小黑 · 师徒深夜谈心", bvid:"BV1k2gpz1EgX", theme:'life' },
+];
+
+const player   = document.getElementById('player');
+const menuEl   = document.getElementById('menu');
+const npEl     = document.getElementById('np');
+const listEl   = document.getElementById('list');
+const barLeft  = document.getElementById('barLeft');
+const barRight = document.getElementById('barRight');
+const npSong   = document.getElementById('npSong');
+const npTheme  = document.getElementById('npTheme');
+const btnMode  = document.getElementById('btnMode');
+const btnGap   = document.getElementById('btnGap');
+const btnBack  = document.getElementById('btnBack');
+const btnBackNp= document.getElementById('btnBackNp');
+const viewportEl = document.querySelector('.viewport');
+
+const ITEM_H = 34;
+let view = 'themes';          // 'themes' | 'tracks' | 'nowplaying'
+let themeSel = 0;             // 主题列表高亮
+let activeTheme = 'all';      // 当前进入的曲目列表主题
+let sel = 0;                  // 当前列表高亮项
+let current = 0;              // 正在播放项（TRACKS 全局索引）
+
+/* ---- 循环设置 ---- */
+const MODE = {
+  theme:{ label:'主题', hint:'主题内顺序循环' },
+  one:  { label:'单曲', hint:'单曲循环 · 重复本曲' },
+  off:  { label:'手动', hint:'手动切换 · 不自动播' },
+};
+const MODE_ORDER = ['theme','one','off'];
+const GAPS = [30,45,60,90,120];
+let playMode = 'theme';       // 'theme' | 'one' | 'off'
+let loopMin = 45;
+let loopTimer = null;
+
+function themeTracks(id){
+  const out=[];
+  TRACKS.forEach((t,i)=>{ if(id==='all' || t.theme===id) out.push(i); });
+  return out;
+}
+function themeName(id){ const t=THEMES.find(x=>x.id===id); return t ? t.name : id; }
+
+function buildSrc(t){
+  const page = t.page || 1;
+  return `https://player.bilibili.com/player.html?bvid=${t.bvid}` +
+         `&page=${page}&danmaku=0&high_quality=1&autoplay=1`;
+}
+function loadSrc(idx, forceReload){
+  const t = TRACKS[idx];
+  // 单曲循环需要强制重载同一 src（加时间戳绕过缓存，从头播）
+  player.src = buildSrc(t) + (forceReload ? `&_t=${Date.now()}` : '');
+}
+
+/* ---- 轮播定时器（B站跨域无法监听播放结束，故按设定时长到点切换）---- */
+function scheduleLoop(){
+  clearTimeout(loopTimer);
+  if (view !== 'nowplaying' || playMode === 'off') return;
+  loopTimer = setTimeout(() => {
+    if (view !== 'nowplaying') return;
+    if (playMode === 'one'){ loadSrc(current, true); scheduleLoop(); }   // 重播当前
+    else stepTrack(1);                                                  // 主题内下一首（循环到尾回环）
+  }, loopMin * 60 * 1000);
+}
+
+function updateNpBar(){
+  btnMode.textContent = MODE[playMode].label;
+  btnGap.textContent = playMode === 'off' ? '手动' : `每 ${loopMin} 分`;
+  btnGap.disabled = playMode === 'off';
+  npTheme.textContent = themeName(TRACKS[current].theme) + ' · ' + MODE[playMode].hint;
+}
+
+function enterNowPlaying(idx){
+  current = (idx + TRACKS.length) % TRACKS.length;
+  const t = TRACKS[current];
+  npSong.textContent = '♪ ' + t.title + (t.page ? ` · P${t.page}` : '');
+  activeTheme = t.theme;
+  updateNpBar();
+  menuEl.style.display = 'none';
+  npEl.classList.add('show');
+  view = 'nowplaying';
+  loadSrc(current);
+  scheduleLoop();                 // 用户手势触发，autoplay 通常可出声
+}
+function exitNowPlaying(){
+  clearTimeout(loopTimer);
+  npEl.classList.remove('show');
+  player.src = '';                // 回到列表即停音频
+  menuEl.style.display = 'flex';
+  view = 'tracks';
+  activeTheme = TRACKS[current].theme;
+  const list = themeTracks(activeTheme);
+  const pos = list.indexOf(current);
+  sel = pos >= 0 ? pos : 0;
+  renderMenu();
+}
+
+/* ---- 在当前曲目所属主题内切歌（到边界循环）---- */
+function stepTrack(d){
+  const list = themeTracks(TRACKS[current].theme);
+  const pos = list.indexOf(current);
+  const nextIdx = list[(pos + d + list.length) % list.length];
+  enterNowPlaying(nextIdx);
+}
+
+function cycleMode(){
+  playMode = MODE_ORDER[(MODE_ORDER.indexOf(playMode) + 1) % MODE_ORDER.length];
+  updateNpBar();
+  scheduleLoop();
+}
+function cycleGap(){
+  loopMin = GAPS[(GAPS.indexOf(loopMin) + 1) % GAPS.length];
+  updateNpBar();
+  scheduleLoop();
+}
+
+/* ---- 菜单渲染（主题列表 / 曲目列表 共用一块屏幕）---- */
+function menuItems(){
+  if (view === 'themes'){
+    return THEMES.map(t => ({ kind:'theme', ico:t.ico, name:t.name, sub: themeTracks(t.id).length + ' 首' }));
+  }
+  return themeTracks(activeTheme).map((gi, i) => ({
+    kind:'track', ico:(i+1), name:TRACKS[gi].title, sub: TRACKS[gi].page ? 'P'+TRACKS[gi].page : ''
+  }));
+}
+function renderMenu(){
+  const items = menuItems();
+  listEl.innerHTML = '';
+  items.forEach((it, i) => {
+    const row = document.createElement('div');
+    row.className = 'row' + (i === sel ? ' on' : '');
+    const icoCls = it.kind === 'theme' ? 'ico-t' : 'ico-n';
+    const sub = it.sub ? `<span class="sub">${it.sub}</span>` : '';
+    row.innerHTML = `<span class="ico ${icoCls}">${it.ico}</span><span class="txt">${it.name}</span>${sub}`;
+    row.onclick = () => { sel = i; onSelect(); };
+    listEl.appendChild(row);
+  });
+  barLeft.textContent  = view === 'themes' ? '白噪音 · 主题' : themeName(activeTheme);
+  barRight.textContent = items.length + (view === 'themes' ? ' 类' : ' 首');
+  btnBack.classList.toggle('show', view === 'tracks');   // 曲目列表显示 ‹ 返回主题
+  const h = viewportEl.clientHeight;   // 用列表可视区高度，保证高亮项真正居中
+  listEl.style.transform = `translateY(${(h/2 - ITEM_H/2) - sel * ITEM_H}px)`;
+}
+
+function moveSel(d){
+  const len = view === 'themes' ? THEMES.length : themeTracks(activeTheme).length;
+  sel = (sel + d + len) % len;
+  renderMenu();
+}
+function onSelect(){
+  if (view === 'themes'){
+    activeTheme = THEMES[sel].id; sel = 0; view = 'tracks'; renderMenu();
+  } else if (view === 'tracks'){
+    const list = themeTracks(activeTheme);
+    if (list.length) enterNowPlaying(list[sel]);
+  } else {
+    cycleMode();   // 播放中按 SELECT = 切循环模式
+  }
+}
+function onMenu(){
+  if (view === 'nowplaying') exitNowPlaying();
+  else if (view === 'tracks'){
+    view = 'themes';
+    const ti = THEMES.findIndex(t => t.id === activeTheme);
+    sel = ti >= 0 ? ti : 0;
+    renderMenu();
+  }
+}
+function move(d){
+  if (view === 'nowplaying') stepTrack(d);
+  else moveSel(d);
+}
+
+/* ---- 转盘拖动 ---- */
+const wheel = document.getElementById('wheel');
+let lastA = null, accum = 0;
+const STEP = Math.PI / 12;   // 每 15° 移动一格
+function angleAt(e){
+  const r = wheel.getBoundingClientRect();
+  return Math.atan2(e.clientY - (r.top + r.height/2), e.clientX - (r.left + r.width/2));
+}
+wheel.addEventListener('pointerdown', e => {
+  if (e.target.closest('#btnCenter')) return;
+  e.preventDefault();                 // 阻止默认拖拽选区（防蓝框）
+  wheel.setPointerCapture(e.pointerId);
+  lastA = angleAt(e); accum = 0;
+});
+wheel.addEventListener('pointermove', e => {
+  if (lastA === null) return;
+  const a = angleAt(e);
+  let d = a - lastA;
+  if (d >  Math.PI) d -= 2*Math.PI;
+  if (d < -Math.PI) d += 2*Math.PI;
+  accum += d; lastA = a;
+  while (accum >  STEP){ accum -= STEP; move(1); }
+  while (accum < -STEP){ accum += STEP; move(-1); }
+});
+wheel.addEventListener('pointerup',    () => lastA = null);
+wheel.addEventListener('pointercancel',() => lastA = null);
+
+/* ---- 按钮 / 键盘 ---- */
+document.getElementById('btnCenter').onclick = onSelect;
+document.getElementById('btnMenu').onclick   = onMenu;
+document.getElementById('btnPrev').onclick   = () => move(-1);
+document.getElementById('btnNext').onclick   = () => move(1);
+btnMode.onclick = cycleMode;
+btnGap.onclick  = cycleGap;
+btnBack.onclick   = () => { if (view === 'tracks') onMenu(); };  // ‹ 返回主题列表
+btnBackNp.onclick = exitNowPlaying;                             // 播放中 ‹ 返回曲目列表
+window.addEventListener('keydown', e => {
+  if (e.key === 'ArrowUp')        move(-1);
+  else if (e.key === 'ArrowDown') move(1);
+  else if (e.key === 'Enter')     onSelect();
+  else if (e.key === 'Escape')    onMenu();
+});
+
+/* ---- 深链 ----
+   ?theme=zen        直达某主题的曲目列表（可给 Notion 每个主题各嵌一块）
+   ?theme=zen&auto=1 直达并播放（主题轮播）
+   ?v=BVxxx          按 BV 号直接播放
+   ?t=序号           兼容旧版：按 TRACKS 全局序号直接播放 */
+const p = new URLSearchParams(location.search);
+const qTheme = p.get('theme');
+if (qTheme && THEMES.some(t => t.id === qTheme)){
+  activeTheme = qTheme;
+  themeSel = THEMES.findIndex(t => t.id === qTheme);
+  sel = 0; view = 'tracks';
+}
+const qV = p.get('v');
+const qT = p.get('t');
+if (qV){
+  const idx = TRACKS.findIndex(t => t.bvid === qV);
+  if (idx >= 0) enterNowPlaying(idx);
+} else if (qT !== null){
+  const idx = ((+qT || 0) % TRACKS.length + TRACKS.length) % TRACKS.length;
+  enterNowPlaying(idx);
+} else if (qTheme && p.get('auto') === '1'){
+  const list = themeTracks(activeTheme);
+  if (list.length) enterNowPlaying(list[0]);
+}
+if (view !== 'nowplaying') renderMenu();
+updateNpBar();
+</script>
+</body>
+</html>
