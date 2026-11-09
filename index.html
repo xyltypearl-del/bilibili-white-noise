@@ -27,8 +27,11 @@
   .ipod{
     width:340px; padding:22px 22px 26px; border-radius:26px; transform-origin:top left;
     background:linear-gradient(160deg,#fdfdfd,#cfd4da);
-    box-shadow:0 30px 70px rgba(0,0,0,.45), inset 0 1px 0 #fff, inset 0 -2px 6px rgba(0,0,0,.12);
+    /* 外阴影调小调淡（原 0 30px 70px /.45 在 Notion 白底上过重）；inset 保留机身金属质感 */
+    box-shadow:0 10px 24px rgba(0,0,0,.14), inset 0 1px 0 #fff, inset 0 -2px 6px rgba(0,0,0,.10);
   }
+  /* 嵌入 Notion 时再减弱一档，白底上更轻盈干净 */
+  body.embedded .ipod{ box-shadow:0 6px 16px rgba(0,0,0,.10), inset 0 1px 0 #fff, inset 0 -2px 6px rgba(0,0,0,.08); }
 
   /* ===== 屏幕 ===== */
   .bezel{ background:#000; border-radius:12px; padding:10px; box-shadow:inset 0 0 0 2px #2a2a2a, inset 0 3px 10px rgba(0,0,0,.6); }
