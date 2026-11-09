@@ -8,20 +8,24 @@
   *{box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent;}
   ::selection{ background:transparent; }
   ::-moz-selection{ background:transparent; }
-  html,body{margin:0;height:100%;}
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;}
   body{
     font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
     background:transparent;
     /* 关键：纵向排列，避免 iPod 与说明文字横向挤压导致窄栏溢出 */
     min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    padding:16px; gap:14px; overflow-x:hidden;
+    padding:16px; gap:14px; overflow:hidden;
   }
-  /* 舞台：固定设计宽度，JS 按容器宽度等比缩放，适配 Notion 窄栏 */
+  /* 舞台：固定设计宽度，JS 按容器宽/高等比缩放，适配 Notion 窄栏 */
   .stage{ width:340px; flex:none; }
+  /* 嵌入态：Stage 用固定设计尺寸的容器承载，缩放只作用在 ipod 上；
+     外层 overflow:hidden 杜绝任何滚动条（横+纵）与右侧裁切溢出 */
+  body.embedded{ overflow:hidden !important; padding:0; justify-content:center; }
+  body.embedded .stage{ margin:0 auto; }
 
   /* ===== iPod 外壳 ===== */
   .ipod{
-    width:340px; padding:22px 22px 26px; border-radius:26px; transform-origin:top center;
+    width:340px; padding:22px 22px 26px; border-radius:26px; transform-origin:top left;
     background:linear-gradient(160deg,#fdfdfd,#cfd4da);
     box-shadow:0 30px 70px rgba(0,0,0,.45), inset 0 1px 0 #fff, inset 0 -2px 6px rgba(0,0,0,.12);
   }
@@ -89,7 +93,6 @@
   .hint{ margin:0 auto; max-width:350px; font-size:11px; color:rgba(70,80,100,.78); line-height:1.7; text-align:center; }
   /* 嵌入 Notion 的 iframe 内隐藏开发说明，避免窄栏溢出；只留干净的 iPod */
   body.embedded .hint{ display:none; }
-  body.embedded{ padding:8px; }
 </style>
 </head>
 <body>
@@ -421,27 +424,52 @@ if (qV){
 if (view !== 'nowplaying') renderMenu();
 updateNpBar();
 
-/* ---- 嵌入适配：iframe 内隐藏说明 + 按容器宽度等比缩放，适配 Notion 窄栏 ---- */
+/* ---- 嵌入适配：iframe 内隐藏说明 + 按容器「宽 AND 高」等比缩放，杜绝裁切/滚动条 ---- */
 (function(){
   let inIframe = false;
   try { inIframe = window.self !== window.top; } catch(e){ inIframe = true; }
   const forceEmbed  = p.get('embed') === '1';   // ?embed=1 手动模拟嵌入
   const forceNormal = p.get('embed') === '0';   // ?embed=0 在 iframe 内强制显示完整说明
-  if ((inIframe && !forceNormal) || forceEmbed) document.body.classList.add('embedded');
+  const embedded = (inIframe && !forceNormal) || forceEmbed;
+  if (embedded) document.body.classList.add('embedded');
 
   const stage = document.getElementById('stage');
   const ipod  = document.getElementById('ipod');
-  const DESIGN_W = 340;
+  const DESIGN_W = 340;                 // iPod 设计宽度（固定）
+  let   DESIGN_H = 0;                   // 自然高度，加载后量一次
+
   function fit(){
-    const pad   = document.body.classList.contains('embedded') ? 16 : 32;  // body 左右 padding
-    const avail = Math.max(120, document.documentElement.clientWidth - pad);
-    const s     = Math.min(1, avail / DESIGN_W);
+    // 用 innerWidth/innerHeight 反映 iframe 真实可视区；clientWidth 在有滚动条时会偏小并触发抖动
+    const vw = window.innerWidth  || document.documentElement.clientWidth  || DESIGN_W;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    // 嵌入态留极小边距（body padding=0，这里再留 6px 防贴边），普通态留 24px
+    const pad = embedded ? 6 : 24;
+    const availW = Math.max(80, vw - pad * 2);
+    const availH = vh ? Math.max(80, vh - pad * 2) : Infinity;
+
+    // 量自然高度：先把缩放清掉再读 offsetHeight，避免读到缩放后的值（transform 不影响布局但保险起见）
+    ipod.style.transform = 'none';
+    const natH = ipod.offsetHeight || DESIGN_H;
+    if (natH) DESIGN_H = natH;
+
+    // 宽、高「双重约束」：取最小的缩放比，保证 iPod 完整落进 iframe，右侧和底部都不溢出
+    const s = Math.min(1, availW / DESIGN_W, DESIGN_H ? availH / DESIGN_H : 1);
+
     ipod.style.transform = `scale(${s})`;
+    // 占位容器尺寸 = 缩放后的真实视觉尺寸；配合 transform-origin:top left，绝无偏移溢出
     stage.style.width  = Math.round(DESIGN_W * s) + 'px';
-    stage.style.height = Math.round(ipod.scrollHeight * s) + 'px';
+    stage.style.height = Math.round(DESIGN_H * s) + 'px';
   }
-  window.addEventListener('resize', fit);
+
   fit();
+  window.addEventListener('resize', fit);
+  window.addEventListener('load', fit);
+  // Notion 插入 embed 后 iframe 尺寸常延迟确定，多次补算覆盖各阶段
+  [0, 50, 150, 400, 1000, 2000].forEach(ms => setTimeout(fit, ms));
+  // 持续监听可视区变化（Notion 拖动 embed 高度 / 栏宽变化会触发，比 resize 更可靠）
+  if (window.ResizeObserver){
+    try { new ResizeObserver(fit).observe(document.documentElement); } catch(e){}
+  }
 })();
 </script>
 </body>
